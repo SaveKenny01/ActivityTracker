@@ -32,6 +32,7 @@ Then, using [GetWindowThreadProcessId](https://learn.microsoft.com/en-us/windows
 The [GetLastInputInfo](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getlastinputinfo) function from user32.dll retrieves the time of the last input event (keyboard or mouse) system-wide. The [LASTINPUTINFO](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-lastinputinfo) structure contains the dwTime field, which stores the number of milliseconds that have elapsed since the operating system started until the last input.
 By comparing this value with the current system tick count ([Environment.TickCount](https://learn.microsoft.com/en-us/dotnet/api/system.environment.tickcount?view=net-10.0)), we calculate the idle time and pause the timer if the user has been inactive for more than 5 seconds.
 
+![](./images/img1.png)
 
 ## About
   * This project is in the development stage. Should you have any suggestions for improvements or encounter any issues, we encourage you to submit them via the [issue](https://github.com/SaveKenny01/Dll-Injector/issues).
