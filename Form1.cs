@@ -1,0 +1,300 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Text;
+using System.Windows.Forms;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+namespace ActivityTracker
+{
+    public partial class Form1 : Form
+    {
+        private List<System.Windows.Forms.Timer> CreateTimer = new List<System.Windows.Forms.Timer>();
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+
+            List<string> windowTitles = GetOpenWindowTitles();
+            if (windowTitles.Count == 0)
+            {
+                MessageBox.Show("Нет открытых окон с заголовками.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+
+            using (WindowSelectionForm selectionForm = new WindowSelectionForm(windowTitles))
+            {
+                if (selectionForm.ShowDialog() != DialogResult.OK || string.IsNullOrEmpty(selectionForm.SelectedWindowTitle))
+                    return;
+
+
+                string selectedTitle = selectionForm.SelectedWindowTitle;
+
+               
+                Process selectedProcess = null;
+                foreach (Process p in Process.GetProcesses())
+                {
+                    if (p.MainWindowTitle == selectedTitle)
+                    {
+                        selectedProcess = p;
+                        break;
+                    }
+                }
+
+                if (selectedProcess == null)
+                {
+                    MessageBox.Show("Окно больше не существует.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                uint processId = (uint)selectedProcess.Id;
+
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 1000;
+
+
+                Panel container = new Panel
+                {
+                    Height = 35,
+                    Width = panelTimers.ClientSize.Width - 25,
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+
+
+                Label lbl = new Label
+                {
+                    Text = "00:00:00",
+                    AutoSize = true,
+                    Font = new Font("Consolas", 12),
+                    Left = 5,
+                    Top = 8
+                };
+
+
+                Label titleLabel = new Label
+                {
+                    Text = selectedTitle,
+                    AutoSize = false,
+                    Width = 300,
+                    Height = 20,
+                    Left = lbl.Right + 20,
+                    Top = 8,
+                    Font = new Font("Segoe UI", 9, FontStyle.Regular),
+                    TextAlign = ContentAlignment.MiddleLeft
+                };
+
+                Button btn = new Button
+                {
+                    Text = "✖ Delete",
+                    Width = 75,
+                    Height = 23,
+                    Left = container.Width - 80,
+                    Top = 5
+                };
+
+
+                container.Controls.Add(lbl);
+                container.Controls.Add(btn);
+                container.Controls.Add(titleLabel);
+
+                panelTimers.Controls.Add(container);
+
+
+                TimerState state = new TimerState
+                {
+                    elapsed = TimeSpan.Zero,
+                    DisplayLabel = lbl,
+                    DeleteButton = btn,
+                    Timer = timer,
+                    ContainerPanel = container,
+                    ProcessId = processId,
+                    WindowTitle = selectedTitle,
+                    TitleLabel = titleLabel
+                };
+
+
+                timer.Tag = state;
+                btn.Tag = state;
+
+
+                timer.Tick += DynamicTimer_Tick;
+                btn.Click += DeleteTimer_Click;
+
+                timer.Start();
+                CreateTimer.Add(timer);
+            }
+        }
+
+        private void DynamicTimer_Tick(object sender, EventArgs e)
+        {
+            System.Windows.Forms.Timer timer = sender as System.Windows.Forms.Timer;
+            if (timer?.Tag is TimerState state)
+            {
+                
+                IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
+                NativeMethods.GetWindowThreadProcessId(foregroundWindow, out uint activeProcessId);
+                bool isWindowActive = (activeProcessId == state.ProcessId);
+
+                
+                uint lastInputTick = GetLastInputTime();
+                uint currentTick = (uint)Environment.TickCount;
+                uint idleMilliseconds = currentTick - lastInputTick;
+                bool isUserActive = (idleMilliseconds <= 5000); 
+
+                
+                if (isWindowActive && isUserActive)
+                {
+                    state.elapsed = state.elapsed.Add(TimeSpan.FromSeconds(1));
+                    state.DisplayLabel.Text = state.elapsed.ToString(@"hh\:mm\:ss");
+                }
+                
+            }
+        }
+        private void DeleteTimer_Click(object sender, EventArgs e)
+        {
+            Button btn = sender as Button;
+            if (btn?.Tag is TimerState state)
+            {
+                
+                state.Timer.Stop();
+                
+                state.Timer.Tick -= DynamicTimer_Tick;
+                btn.Click -= DeleteTimer_Click;
+
+                
+                CreateTimer.Remove(state.Timer);
+
+                
+                panelTimers.Controls.Remove(state.ContainerPanel);
+                state.ContainerPanel.Dispose();
+
+                
+                state.Timer.Dispose();
+            }
+        }
+
+        private List<string> GetOpenWindowTitles()
+        {
+            List<string> titles = new List<string>();
+            foreach (Process p in Process.GetProcesses())
+            {
+                if (!string.IsNullOrEmpty(p.MainWindowTitle))
+                {
+                    string processName = p.ProcessName.ToLower();
+                    if (processName != "explorer" && processName != "taskhost" &&
+                        processName != "svchost" && processName != "winlogon" &&
+                        processName != "csrss" && processName != "smss")
+                    {
+                        titles.Add(p.MainWindowTitle);
+                    }
+                }
+            }
+            return titles;
+        }
+
+        private uint GetLastInputTime()
+        {
+            NativeMethods.LASTINPUTINFO lii = new NativeMethods.LASTINPUTINFO();
+            lii.cbSize = (uint)Marshal.SizeOf(typeof(NativeMethods.LASTINPUTINFO));
+            if (NativeMethods.GetLastInputInfo(ref lii))
+            {
+                return lii.dwTime;
+            }
+            return 0;
+        }
+    }
+
+    public static class NativeMethods
+    {
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+        public struct LASTINPUTINFO
+        {
+            public uint cbSize;
+            public uint dwTime;
+        }
+    }
+
+    public class TimerState
+    {
+        public TimeSpan elapsed { get; set; } = TimeSpan.Zero;
+        public Label DisplayLabel {  get; set; }
+        public Button DeleteButton { get; set; }
+        public System.Windows.Forms.Timer Timer { get; set; }  
+        public Panel ContainerPanel { get; set; }
+        public string WindowTitle { get; set; }
+        public Label TitleLabel { get; set; }
+        public uint ProcessId { get; set; }
+
+    }
+
+    public class WindowSelectionForm : Form
+    {
+        public string SelectedWindowTitle { get; private set; }
+
+        public WindowSelectionForm(List<string> windowTitles)
+        {
+            Text = "Выберите окно для отслеживания";
+            Width = 400;
+            Height = 300;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterParent;
+
+            Label lbl = new Label
+            {
+                Text = "Выберите окно:",
+                Location = new Point(10, 10),
+                AutoSize = true
+            };
+
+            ComboBox combo = new ComboBox
+            {
+                Location = new Point(10, 30),
+                Width = 360,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            combo.Items.AddRange(windowTitles.ToArray());
+            if (combo.Items.Count > 0)
+                combo.SelectedIndex = 0;
+
+            Button btnOk = new Button
+            {
+                Text = "OK",
+                Location = new Point(200, 70),
+                DialogResult = DialogResult.OK
+            };
+            Button btnCancel = new Button
+            {
+                Text = "Отмена",
+                Location = new Point(290, 70),
+                DialogResult = DialogResult.Cancel
+            };
+
+            Controls.Add(lbl);
+            Controls.Add(combo);
+            Controls.Add(btnOk);
+            Controls.Add(btnCancel);
+
+            btnOk.Click += (s, e) =>
+            {
+                SelectedWindowTitle = combo.SelectedItem?.ToString();
+            };
+        }
+    }
+}
