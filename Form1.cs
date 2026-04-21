@@ -82,7 +82,7 @@ namespace ActivityTracker
                 {
                     Text = selectedTitle,
                     AutoSize = false,
-                    Width = 300,
+                    Width = 500,
                     Height = 20,
                     Left = lbl.Right + 20,
                     Top = 8,
